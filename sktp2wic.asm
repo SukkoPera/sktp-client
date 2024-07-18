@@ -133,6 +133,7 @@ nextln:
     ;is always near the end of a screen and all vrsc chunks
     ;are already processed by then.
 
+	scratch_zptr = $14      ; word, also uses $15, can be used whenever a scratch pointer is necessary
     next_resp_byte = $fe    ; word, also uses $ff, index of next byte or response to be returned from read_byte
 }
 
@@ -1269,23 +1270,22 @@ sendSKTPCommand:
 ;--------------------------
 read_byte:
 ;--------------------------
+	; We need to fetch the next_resp_byte'th byte of the response
     clc
     lda #<response          ; Low byte first
     adc next_resp_byte
-    sta tmpx				; FIXME: ACME gives a "Using oversized addressing mode" warning
+    sta scratch_zptr
     lda #>response
     adc next_resp_byte+1
-    sta tmpx+1				; Ditto
+    sta scratch_zptr+1
     ldx #0
-    lda (tmpx,x)
+    lda (scratch_zptr,x)
 
     inc next_resp_byte
     bne +
     inc next_resp_byte+1
 
 +   rts
-
-!addr tmpx = $14        ; Needs to be in ZP in order to use
 
 ;--------------------------------------------
 ascii2screencode:
