@@ -28,29 +28,29 @@
 
 !if PLUS4 {
     !addr SCREEN_RAM = $0c00        ; Up to $0ae7 (?)
-    !addr COLOR_RAM = $0800			; FIXME
+    !addr COLOR_RAM = $0800         ; FIXME
 
-	CHROUT = $ffd2
-	GETIN = $ffe4
+    CHROUT = $ffd2
+    GETIN = $ffe4
 
-	BACKGROUND = $ff15
-	BORDER = $ff19
+    BACKGROUND = $ff15
+    BORDER = $ff19
 } else {
     !addr SCREEN_RAM = $0400        ; Up to $07e7
-    !addr COLOR_RAM = $d800			; Up to $dbe7
+    !addr COLOR_RAM = $d800         ; Up to $dbe7
 
-	CHROUT = $ffd2
-	GETIN = $ffe4
+    CHROUT = $ffd2
+    GETIN = $ffe4
 
-	BACKGROUND = $d020
-	BORDER = $d021
+    BACKGROUND = $d020
+    BORDER = $d021
 }
 
 !macro clear_screen {
-    jsr $e544				; C64
-	;~ lda #$93		;clear screen
-	;~ jsr CHROUT
-	;~ jsr $d88b
+    ;~ jsr $e544               	; C64
+	;~ jsr $d88b				; +4 (maybe)
+    lda #$93					; Universal
+    jsr CHROUT
 }
 
 CHARS_PER_LINE = 40
@@ -58,15 +58,15 @@ CHARS_PER_LINE = 40
 ; Color values for poking into Color RAM
 ; On +4 things are more complex, since bits 6..4 control the luminance, while 3..0 control the color
 COLOR_BLACK = 0
-COLOR_WHITE = 1					; FIXME+4
+COLOR_WHITE = 1                 ; FIXME+4
 COLOR_RED = 2
 COLOR_PURPLE = 4
-COLOR_GREEN = 5					; Oh, you've got green eyes...
-COLOR_BLUE = 6					; ... Oh, you've got blue eyes...
+COLOR_GREEN = 5                 ; Oh, you've got green eyes...
+COLOR_BLUE = 6                  ; ... Oh, you've got blue eyes...
 COLOR_YELLOW = 7
 COLOR_ORANGE = 8
 COLOR_BROWN = 9
-!if PLUS4 {						; Unfotunately colors 10 and beyond are different on C64/+4 :(
+!if PLUS4 {                     ; Unfotunately colors 10 and beyond are different on C64/+4 :(
 COLOR_CYAN = 99
 COLOR_YELLOW_GREEN = 10
 COLOR_PINK = 11
@@ -79,9 +79,9 @@ COLOR_DARK_GREY = 49
 COLOR_CYAN = 3
 COLOR_LIGHT_RED = 10
 COLOR_DARK_GREY = 11
-COLOR_GREY = 12					; ... Oh, you've got GREEEEEEEEEY EEEEEEYYYEEEESSS!
+COLOR_GREY = 12                 ; ... Oh, you've got GREEEEEEEEEY EEEEEEYYYEEEESSS!
 COLOR_LIGHT_GREEN = 13
-COLOR_LIGHT_BLUE = 14			; Default char color in BASIC
+COLOR_LIGHT_BLUE = 14           ; Default char color in BASIC
 COLOR_LIGHT_GREY = 15
 }
 
@@ -105,14 +105,14 @@ COLOR_LIGHT_GREY = 15
 !if PLUS4 {
     * = $1001 ; 10 SYS 4109 ($100d)
 
-	!word nextln, 0		; second word is line number
-	!byte $9e			; SYS
-	!pet "4109"			; Address (in string format)
-	!byte 0 			; End of instruction
+    !word nextln, 0     ; second word is line number
+    !byte $9e           ; SYS
+    !pet "4109"         ; Address (in string format)
+    !byte 0             ; End of instruction
 nextln:
-	!byte 0, 0 		    ; End of BASIC program
+    !byte 0, 0          ; End of BASIC program
 
-	* = 4109
+    * = 4109
 } else {
     * = $0801 ; 10 SYS 2064 ($0810)
     !byte $0c, $08, $0a, $00, $9e, $20, $32, $30, $36, $34, $00, $00, $00
@@ -121,31 +121,32 @@ nextln:
 }
 
 !addr {
-	;area for PRG loader
-	safe_area = $0334   ; for load-routine
+    ;zeropage addresses used
+    tmp            = $a6
+    data_pointer   = $a7 ; $a7/$a8 adress for data
+    data_pointer2  = $a8 ; $a7/$a8 adress for data
+    color_pointer  = $a9 ; $a9/$aa adress for data
+    color_pointer2 = $aa ; $a9/$aa adress for data
+    mpCount        = $ab; multi purpose counter
+    ;we are using mpCount for screenMetaRefresh and also
+    ;for verticalrepeatscreencode chunk as the refresh chunk
+    ;is always near the end of a screen and all vrsc chunks
+    ;are already processed by then.
 
-	;zeropage addresses used
-	tmp   = $a6
-	data_pointer   = $a7 ; $a7/$a8 adress for data
-	data_pointer2  = $a8 ; $a7/$a8 adress for data
-	color_pointer  = $a9 ; $a9/$aa adress for data
-	color_pointer2 = $aa ; $a9/$aa adress for data
-	mpCount        = $ab; multi purpose counter
-	;we are using mpCount for screenMetaRefresh and also
-	;for verticalrepeatscreencode chunk as the refresh chunk
-	;is always near the end of a screen and all vrsc chunks
-	;are already processed by then.
-
-	next_resp_byte = $fe	; word, also uses $ff, index of next byte or response to be returned from read_byte
+    next_resp_byte = $fe    ; word, also uses $ff, index of next byte or response to be returned from read_byte
 }
 
+
+;============================================
+; Program entry poin
+;============================================
 jmp start
 
 !src "wic64.h"
 !src "wic64.asm"
 
 welcomeScreen:
-	+clear_screen
+    +clear_screen
     lda #(COLOR_DARK_GREY)
     jsr setBothColors
     lda #5 ; white font color
@@ -184,7 +185,7 @@ setBothColors:
     rts
 
 printDLURLStuff:
-	; Print "File launching...", etc
+    ; Print "File launching...", etc
     ldy #0
 -   lda nodoloMSG,y
     beq +
@@ -193,11 +194,11 @@ printDLURLStuff:
     jmp -
 +   jsr CHROUT
 
-	; I think this is unnecessary, as it will be recalculated anyway in requestDownloadURL
-    ;~ lda sktpChunkType
-    ;~ sta dlurl_netto_start-2					; Mmmmh... URL length?
+    ; We have the URL length handy, so let's just write it in the proper place for the command we'll call later
+    lda sktpChunkType
+    sta dlurl_start+2
 
-	; Print URL while copying it to dlurl_netto_start
+    ; Print URL while copying it to dlurl_netto_start
     ldy #00
 printDLURLChar:
     jsr read_byte
@@ -217,7 +218,7 @@ printDLURLChar:
     lda #$0d
     jsr CHROUT
 
-	; Print download filename
+    ; Print download filename
 printDLFilenameChar:
     jsr read_byte
 ;TODO ascii 2 petscii here
@@ -225,33 +226,34 @@ printDLFilenameChar:
     jsr CHROUT
     dec sktpChunkLengthL
     bne printDLFilenameChar
-    jmp fetchDownload
+    jmp requestDownloadURL          ; Will download and start
+    
 
-; --- PROGRAM START ---
+;============================================
+; Actual program start
+;============================================
 start:
     ;switch to lowercase
     lda #14
     jsr CHROUT
 
     jsr welcomeScreen
-    jsr detectLegacyFirmware   	; FIXME: What if we detect legacy FW???
-
-    ;~ cld ; no decimal-flag wanted
+    jsr detectLegacyFirmware    ; FIXME: What if we detect legacy FW???
 
 renewSessionID:
-	INDICATOR_OFFSET = CHARS_PER_LINE * 14 + 32
+    INDICATOR_OFFSET = CHARS_PER_LINE * 14 + 32
     ; start with indicator in yellow color
     lda #COLOR_YELLOW
     sta COLOR_RAM + INDICATOR_OFFSET
 
     ;get and store sktp session id
     jsr request_sessionid
-    bcc +				; Carry clear if no errors
+    bcc +               ; Carry clear if no errors
 
     ; failure, update indicator color to red
     lda #COLOR_RED
     sta COLOR_RAM + INDICATOR_OFFSET
--	jmp -							; Hang there, FIXME
+-   jmp -                           ; Hang there, FIXME
 
     ; ok, update indicator (light green tick)
 +   lda #122
@@ -302,7 +304,6 @@ getresponse:
 
     ;subtract one from length as this is the screen type byte
     lda sktpScreenLengthL
-    ;~ cmp #00
     bne jumpPositive
     dec sktpScreenLengthH
 jumpPositive:
@@ -881,7 +882,6 @@ readByteAndDecrease:
 ;============================================
 endOfChunkReached:
 ;============================================
-
     ;lengthdebug
 
     ;lda sktpChunkType
@@ -987,7 +987,7 @@ noMetaRefreshActive:
 leaveWaitLoop:
     tax
     jsr getHiNibbleHex
-    sta sktp_key+1			; Skip initial '!'
+    sta sktp_key+1          ; Skip initial '!'
     ;jsr CHROUT
     txa
     jsr getLowNibbleHex
@@ -997,7 +997,7 @@ leaveWaitLoop:
 
 ;    lda #"*"
 ;    jsr CHROUT
-    jmp end2
+    jmp program_end
 
 ;============================================
 screenAndColorRAMAddress:
@@ -1007,14 +1007,14 @@ screenAndColorRAMAddress:
     lda sktpChunkScrPosL
     sta data_pointer
     sta color_pointer
-    ;screen memory starts at $0400
+    ;screen memory starts at SCREEN_RAM
     lda sktpChunkScrPosH
     clc
-    adc #4
+    adc #(SCREEN_RAM >> 8)
     sta data_pointer2
-    ;color memory starts at $d800
+    ;color memory starts at COLOR_RAM
     lda sktpChunkScrPosH
-    adc startColorRAM
+    adc #(COLOR_RAM >> 8)
     sta color_pointer2
     rts
 
@@ -1170,14 +1170,14 @@ detectLegacyFirmware:
     lda #$01
     sta legacyFirmware
 
-	+wic64_detect
-    ;~ bcs device_not_present		FIXME
+    +wic64_detect
+    ;~ bcs device_not_present       FIXME
     bcs thisIsLegacy
     bne thisIsLegacy
-	jmp +
+    jmp +
 
 thisIsLegacy:
-	dec legacyFirmware
+    dec legacyFirmware
 
 +   rts
 
@@ -1185,60 +1185,39 @@ legacyFirmware: !byte $01
 
 ;--------------------------
 
+; This macro is used in the routines below to calculate the size of the commands to be sent to the WiC
+; Assumption is that all sizes are < 256
 !macro calc_payload_size .cmd {
     ; We need to calculate the payload size
     ldy #$00
 -   iny
-    lda .cmd+4,y			; Skip header
-    bne -					; Keep counting until the zero byte
-    sty .cmd+2      		; Save it inside the command assume len<256)
+    lda .cmd+4,y            ; Skip header
+    bne -                   ; Keep counting until the zero byte
+    sty .cmd+2              ; Save it inside the command
 }
 
 ;--------------------------
 requestDownloadURL:
 ;--------------------------
-	+calc_payload_size dlurl_start
-	+wic64_load_and_run dlurl_start
+    ; We don't need to call +calc_payload_size dlurl_start, URL size was already updated before jumping here
+    +wic64_load_and_run dlurl_start
     rts
-	;~ ; Now run the command and get the reply
-	;~ +wic64_execute dlurl_start, response
-	;~ bcs +
-	;~ bne +
-
-	;~ ; OK, init the reply counter
-	;~ lda #0
-	;~ sta next_resp_byte
-	;~ sta next_resp_byte+1
-	;~ clc
-    ;~ jmp +++
-
-    ;~ ; Some error happened, report back through carry flag
-;~ +	sec
-
-;~ +++ rts
-
 
 ;--------------------------
-
 request_sessionid:
-    ; We need to calculate the url size
-    ;~ ldy #$00
-;~ -   iny
-    ;~ lda sess_url,y
-    ;~ cmp #$00
-    ;~ bne -
-    ;~ sty sess_command+2       ; Save it inside the command assume len<256)
-	+calc_payload_size sess_command
+;--------------------------
+	; Calculate param size
+    +calc_payload_size sess_command
 
-	; Now run the command and get the reply
-	+wic64_execute sess_command, response
-	bcs +
-	bne +
+    ; Now run the command and get the reply
+    +wic64_execute sess_command, response
+    bcs +++
+    bne +
 
     ; Copy session ID to its place - we only expect 26 bytes (<255, so hi byte is irrelevant)
     ldx wic64_response_size
     ldy #0
--	lda response,y
+-   lda response,y
     sta cmd_default_url_sess,y
     iny
     dex
@@ -1248,87 +1227,65 @@ request_sessionid:
     jmp +++
 
     ; Some error happened, report back through carry flag
-+	sec
++   sec
 
 +++ rts
 
 ;--------------------------
 
 sendURLPrefixToWic:
-    ; We need to calculate the prefix size
-    ;~ ldy #$00
-;~ -   iny
-    ;~ lda cmd_default_url,y
-    ;~ cmp #$00
-    ;~ bne -
-    ;~ sty cmd_default_server+2       ; Save it inside the command assume len<256)
+    +calc_payload_size cmd_default_server
 
-	+calc_payload_size cmd_default_server
-
-	; Now run the command and get the reply
-	+wic64_execute cmd_default_server, response
-	bcs +
-	bne +
+    +wic64_execute cmd_default_server, response
+    bcs +++
+    bne +
 
     clc
     jmp +++
 
-    ; Some error happened, report back through carry flag
-+	sec
++   sec
 
 +++ rts
 
 ;--------------------------
 
 sendSKTPCommand:
-    ;~ ; We need to calculate the payload size
-    ;~ ldy #$00
-;~ -   iny
-    ;~ lda sktp_key,y
-    ;~ cmp #$00
-    ;~ bne -
-    ;~ sty sktp_command+2       ; Save it inside the command assume len<256)
+    +calc_payload_size sktp_command
+    +wic64_execute sktp_command, response
+    bcs +++
+    bne +
 
-	+calc_payload_size sktp_command
-
-	; Now run the command and get the reply
-	+wic64_execute sktp_command, response
-	bcs +
-	bne +
-
-	; OK, init the reply counter
-	lda #0
-	sta next_resp_byte
-	sta next_resp_byte+1
-	clc
+    ; Comand successful, init the response byte counter
+    lda #0
+    sta next_resp_byte
+    sta next_resp_byte+1
+    clc
     jmp +++
 
-    ; Some error happened, report back through carry flag
-+	sec
++   sec
 
 +++ rts
 
 ;--------------------------
 read_byte:
 ;--------------------------
+    clc
+    lda #<response          ; Low byte first
+    adc next_resp_byte
+    sta tmpx				; FIXME: ACME gives a "Using oversized addressing mode" warning
+    lda #>response
+    adc next_resp_byte+1
+    sta tmpx+1				; Ditto
+    ldx #0
+    lda (tmpx,x)
 
-	clc
-	lda #<response			; Low byte first
-	adc next_resp_byte
-	sta tmpx
-	lda #>response
-	adc next_resp_byte+1
-	sta tmpx+1
-	ldx #0
-	lda (tmpx,x)
-
-	inc next_resp_byte
-	bne +
-	inc next_resp_byte+1
+    inc next_resp_byte
+    bne +
+    inc next_resp_byte+1
 
 +   rts
 
-!addr tmpx = $14		; Needs to be in ZP in order to use
+!addr tmpx = $14        ; Needs to be in ZP in order to use
 
 ;--------------------------------------------
 ascii2screencode:
@@ -1350,47 +1307,44 @@ noconv:
     clc
     rts
 
-;---------------------------------
 
-startColorRAM: !text $d8
+;============================================
+; DATA AREA
+;============================================
 
-; !byte "W", <total-request-size-lowbyte>, <total-request-size-highbyte>, <command-id>
-; The size specified in the request header does not refer to the size of the payload but rather to the size of the
-; entire request, including the request header itself. This means that even for requests without payload, the size had
-; to be specified as four rather than zero.
-sktp_command:    !byte "R", WIC64_HTTP_GET, $00, $00			; '!' means "url set with WIC64_SET_SERVER"
-sktp_key:        !text "!", "&r", 0
+sktp_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; '!' means "url set with WIC64_SET_SERVER"
+sktp_key:               !text "!", "&r", 0
 
-cmd_default_server:     !byte "R", WIC64_SET_SERVER, $00, $00	; <string-size-l>, <string-size-h>, <string>
+cmd_default_server:     !byte "R", WIC64_SET_SERVER, $00, $00   ; <string-size-l>, <string-size-h>, <string>
 cmd_default_url:        +sktp_server
 
                         !text "/sktp.php?s="
-cmd_default_url_sess:   !text "12345678901234567890123456"		; This will be updated by request_sessionid
+cmd_default_url_sess:   !text "12345678901234567890123456"      ; This will be updated by request_sessionid
 cmd_default_url_parm:   !text "&k=", 0
 
-sess_command:    !byte "R", WIC64_HTTP_GET, $00, $00			; <url-size-l>, <url-size-h>, <url>...
-sess_url:        +sktp_server
-                 !text "/sktp.php?session=new&type=64&username=wic64test&f=wic&v="
-sess_version:    +client_version
-sess_end:        !byte 0
+sess_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...
+sess_url:               +sktp_server
+                        !text "/sktp.php?session=new&type=64&username=wic64test&f=wic&v="
+sess_version:           +client_version
+sess_end:               !byte 0
 
-response:		!fill 2048
+response:               !fill 2048
 
 sktpChunk:
-sktpChunkType:    !text $00
-sktpChunkLengthL: !text $00
-sktpChunkLengthH: !text $00
-sktpChunkScrPosL: !text $00
-sktpChunkScrPosH: !text $00
-sktpChunkGap:
-sktpChunkColor:   !text $00
-sktpChunkRptCount:!text $00
-
-sktpScreenType:   !text $00
-sktpScreenLengthH:!text $00
-sktpScreenLengthL:!text $00
-sktpNettoChunkLengthL  :!text $00
-sktpNettoChunkLengthH  :!text $00
+sktpChunkType:          !text $00
+sktpChunkLengthL:       !text $00
+sktpChunkLengthH:       !text $00
+sktpChunkScrPosL:       !text $00
+sktpChunkScrPosH:       !text $00
+sktpChunkGap:       
+sktpChunkColor:         !text $00
+sktpChunkRptCount:      !text $00
+        
+sktpScreenType:         !text $00
+sktpScreenLengthH:      !text $00
+sktpScreenLengthL:      !text $00
+sktpNettoChunkLengthL:  !text $00
+sktpNettoChunkLengthH:  !text $00
 
 errormsg_IllegalScreen: !pet  "Illegal Screen Type",0
 welcomeMsg:             !pet  "         SKTP client for WiC64",$0d,$0d,$0d
@@ -1412,88 +1366,11 @@ welcomeMsg:             !pet  "         SKTP client for WiC64",$0d,$0d,$0d
 nodoloMSG:              !pet $0d,$0d, "File launching...",$0d
                         !pet "Please wait!",$0d,$0d,0
 
-dlurl_start:			!byte "R", WIC64_HTTP_GET, $00, $00			; <url-size-l>, <url-size-h>, <url>...	
-dlurl_netto_start:		!text "h", 0
-						!fill 254, 0
+dlurl_start:            !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...  
+dlurl_netto_start:      !text "h", 0
+                        !fill 254, 0
 
-end2:
-  rts
+;---------------------------------
 
-fetchDownload:
-    ;~ jsr copyload
-    ;~ lda #00
-    ;~ sta tmp
-
-;~ lp_load:
-    jsr requestDownloadURL
-    ;~ jsr read_byte   ; dummy byte for triggering ESP IRQ
-    jsr read_byte   ; data length high byte
-    sta tmp     ; counter Hhigh byte
-    jsr read_byte   ; data length low byte
-    tax     ; x: counter low byte
-
-    inc tmp     ; +1 for faster check dec/bne
-    jsr read_byte   ; loadadress low byte
-    cmp #33     ; "!" bei http Fehler (z.B. file not found oder server busy)
-    ;~ beq lp_load
-    lda #$01    ; to force load ,8 (at basic start)
-    sta data_pointer
-    jsr read_byte   ; loadadress high byte
-    lda #$08    ; to force load ,8 (at basic start)
-    sta data_pointer+1
-    jmp safe_area   ; load program and run
-
-copyload:
-	ldx #(read_0334_end-read_0334_start)
--   lda read_0334_start,x ; copy load routine in safe area
-    sta safe_area,x
-    dex
-    bpl -
-    rts
-
-read_0334_start:
-!pseudopc safe_area {
-
-;    lda #00
-;    sta BACKGROUND
-
-;    jsr $e453 ; init vectors
-;    jsr $e3bf ; init basic ram
-;    jsr $FF8A   ;restore kernel vectors
-;    jsr $fd15 ; i/o
-;    jsr $ff5b ; init video /editor
-;    JSR $A659 ; character pointer and ckrs
-
-    ldy #00
-
-loop_read_0334
-handshake_0334
-    lda $dd0d
-    nop
-    nop
-    nop
-    nop       ; short delay
-    and #$10          ; wait for NMI FLAG2
-    beq handshake_0334
-    lda $dd01     ; read byte
-    sta (data_pointer),y
-;    sta BACKGROUND    ; borderflicker while loading
-    iny
-    bne +
-    inc data_pointer+1
-+   dex
-    bne loop_read_0334
-    dec tmp
-    bne loop_read_0334  ; all bytes read?
-    cli
-    JSR $A659 ; character pointer and ckrs
-;    jsr $FDB3   ; cia
-    jsr $FDA3   ; init SID, CIA und IRQ
-;    jsr $fd50; memory
-
-    JSR $FF40 ;RTS  ;JSR $FF81    ; screen reset
-    JMP $A7AE   ; RUN
-
-}
-read_0334_end
-
+program_end:
+	rts
