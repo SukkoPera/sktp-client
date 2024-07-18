@@ -15,16 +15,9 @@
 ;
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 ;
-; Assembler used: C64 Studio by Georg Rottensteiner
-; https://www.georg-rottensteiner.de/de/c64.html
-;
-; PRG download and launch functionality is heavily inspired by the
-; portal launch code in the "WiC64 Universal Routine" that can be
-; found here: https://www.wic64.de/downloads/
-;
-
+; Assembler used: ACME Cross-Assembler
+; https://sourceforge.net/projects/acme-crossass/
 
 !if PLUS4 {
     !addr SCREEN_RAM = $0c00        ; Up to $0ae7 (?)
@@ -46,19 +39,58 @@
     BORDER = $d021
 }
 
+; Clear the screen
 !macro clear_screen {
-    ;~ jsr $e544               	; C64
-	;~ jsr $d88b				; +4 (maybe)
-    lda #$93					; Universal
+    ;~ jsr $e544                ; C64
+    ;~ jsr $d88b                ; +4 (maybe)
+    lda #$93                    ; Universal
     jsr CHROUT
+}
+
+; Print a null-terminated string
+!macro printStr .msg {
+    ldy #0
+-   lda .msg,y
+    beq +
+    jsr CHROUT
+    iny
+    jmp -
++
 }
 
 CHARS_PER_LINE = 40
 
 ; Color values for poking into Color RAM
-; On +4 things are more complex, since bits 6..4 control the luminance, while 3..0 control the color
+!if PLUS4 {
+; +4 has a palette of 128 colors (121 different), bits 6..4 control the luminance, while 3..0 control the color
+; These are the KERNAL values, taken from memory location $0113
+COLOR_BLACK = $00               ; CTRL + 1
+COLOR_WHITE = $71               ; CTRL + 2
+COLOR_RED = $32                 ; CTRL + 3
+COLOR_CYAN = $63                ; CTRL + 4
+COLOR_PURPLE = $44              ; CTRL + 5
+COLOR_GREEN = $35               ; CTRL + 6
+COLOR_BLUE = $46                ; CTRL + 7
+COLOR_YELLOW = $77              ; CTRL + 8
+COLOR_ORANGE = $48              ; C= + 1
+COLOR_BROWN = $29               ; C= + 2
+
+; +4 "exclusive" colors
+COLOR_YELLOW_GREEN = $5a        ; C= + 3
+COLOR_LIGHT_RED = $6b           ; C= + 4
+COLOR_BLUE_GREEN = $5c          ; C= + 5
+COLOR_LIGHT_BLUE = $6d          ; C= + 6
+COLOR_DARK_BLUE = $2e           ; C= + 7
+COLOR_LIGHT_GREEN = $5f         ; C= + 8
+
+; Close matches for other C64 colors (by me)
+COLOR_DARK_GREY = $31
+COLOR_GREY = $41
+COLOR_LIGHT_GREY = $51
+} else {
+; C64 can only display 16 (mostly horrible) colors
 COLOR_BLACK = 0
-COLOR_WHITE = 1                 ; FIXME+4
+COLOR_WHITE = 1
 COLOR_RED = 2
 COLOR_PURPLE = 4
 COLOR_GREEN = 5                 ; Oh, you've got green eyes...
@@ -66,16 +98,6 @@ COLOR_BLUE = 6                  ; ... Oh, you've got blue eyes...
 COLOR_YELLOW = 7
 COLOR_ORANGE = 8
 COLOR_BROWN = 9
-!if PLUS4 {                     ; Unfotunately colors 10 and beyond are different on C64/+4 :(
-COLOR_CYAN = 99
-COLOR_YELLOW_GREEN = 10
-COLOR_PINK = 11
-COLOR_BLUE_GREEN = 12
-COLOR_LIGHT_BLUE = 13
-COLOR_DARK_BLUE = 14
-COLOR_LIGHT_GREEN = 15
-COLOR_DARK_GREY = 49
-} else {
 COLOR_CYAN = 3
 COLOR_LIGHT_RED = 10
 COLOR_DARK_GREY = 11
@@ -133,7 +155,7 @@ nextln:
     ;is always near the end of a screen and all vrsc chunks
     ;are already processed by then.
 
-	scratch_zptr = $14      ; word, also uses $15, can be used whenever a scratch pointer is necessary
+    scratch_zptr = $14      ; word, also uses $15, can be used whenever a scratch pointer is necessary
     next_resp_byte = $fe    ; word, also uses $ff, index of next byte or response to be returned from read_byte
 }
 
@@ -145,24 +167,6 @@ jmp start
 
 !src "wic64.h"
 !src "wic64.asm"
-
-welcomeScreen:
-    +clear_screen
-    lda #(COLOR_DARK_GREY)
-    jsr setBothColors
-    lda #5 ; white font color
-    jsr CHROUT
-    ldy #0
-loopWelcomeMsg:
-    lda welcomeMsg,y
-    ;~ cmp #0
-    beq endOfWelcomeMsg
-    jsr CHROUT
-    iny
-    jmp loopWelcomeMsg
-endOfWelcomeMsg:
-    jsr CHROUT
-    rts
 
 !if 0 {
 debugOutputScreenLength:
@@ -228,43 +232,60 @@ printDLFilenameChar:
     dec sktpChunkLengthL
     bne printDLFilenameChar
     jmp requestDownloadURL          ; Will download and start
-    
+
 
 ;============================================
 ; Actual program start
 ;============================================
 start:
-    ;switch to lowercase
-    lda #14
+    +clear_screen
+    lda #(COLOR_DARK_GREY)
+    jsr setBothColors
+    lda #5              ; white font color
+    jsr CHROUT
+    lda #14             ;switch to lowercase
     jsr CHROUT
 
-    jsr welcomeScreen
-    jsr detectLegacyFirmware    ; FIXME: What if we detect legacy FW???
+    ; Show welcome message
+    +printStr welcomeMsg
+
+    ; See if WicXX is there
+    jsr detectLegacyFirmware        ; FIXME: What if we detect legacy FW???
+    bcc renewSessionID
+    +printStr wicNotDetectedMsg     ; :(
+    jmp program_end
 
 renewSessionID:
-    INDICATOR_OFFSET = CHARS_PER_LINE * 14 + 32
+    ; OK, card found, try to get session ID
+    +printStr requestSessIdMsg
+
+	; Offset of the char indicating wait/success/failure
+    INDICATOR_OFFSET = CHARS_PER_LINE * 15 + 32
+    
     ; start with indicator in yellow color
-    lda #COLOR_YELLOW
+    lda #(COLOR_YELLOW)
     sta COLOR_RAM + INDICATOR_OFFSET
-
-    ;get and store sktp session id
+    
+    ; get and store sktp session id
     jsr request_sessionid
-    bcc +               ; Carry clear if no errors
+    bcc +              				 ; Carry clear if no errors
 
-    ; failure, update indicator color to red
-    lda #COLOR_RED
+    ; failure, update indicator color to red and quit
+    lda #(COLOR_RED)
     sta COLOR_RAM + INDICATOR_OFFSET
--   jmp -                           ; Hang there, FIXME
+    jmp program_end
 
     ; ok, update indicator (light green tick)
 +   lda #122
     sta SCREEN_RAM + INDICATOR_OFFSET
-    lda #COLOR_LIGHT_GREEN
+    lda #(COLOR_LIGHT_GREEN)
     sta COLOR_RAM + INDICATOR_OFFSET
 
-    ;now send the command to set the default server to wic
+    ; send the command to set the default server to wic
     jsr sendURLPrefixToWic
 
+
+	+printStr pressAnyKeyMsg
 waitkeypressW:
     jsr GETIN
     beq waitkeypressW
@@ -403,10 +424,8 @@ parseChunk:
     ;check if screen buffer is now empty and everything is in place
     ;and we are ready to listen to keypresses
     lda sktpScreenLengthL
-    cmp #00
     bne isnotempty
     lda sktpScreenLengthH
-    cmp #00
     bne isnotempty
     ldy #00 ; for delay that works via y
     jmp waitkey; is empty, now wait for user keypress and load next screen
@@ -1165,24 +1184,26 @@ getLowNibbleHex:
 :lowNibbleDone
     rts
 
+
+;============================================
+; WicXX interaction routines
+;============================================
+
 ;--------------------------
 detectLegacyFirmware:
 ;--------------------------
-    lda #$01
-    sta legacyFirmware
-
     +wic64_detect
     ;~ bcs device_not_present       FIXME
-    bcs thisIsLegacy
-    bne thisIsLegacy
-    jmp +
+    bcs +++
+    bne +
 
-thisIsLegacy:
-    dec legacyFirmware
+    clc
+    jmp +++
 
-+   rts
+    ; Some error happened, report back through carry flag
++   sec
 
-legacyFirmware: !byte $01
++++ rts
 
 ;--------------------------
 
@@ -1202,12 +1223,12 @@ requestDownloadURL:
 ;--------------------------
     ; We don't need to call +calc_payload_size dlurl_start, URL size was already updated before jumping here
     +wic64_load_and_run dlurl_start
-    rts
+    rts                     ; I strongly doubt we'll ever get back here ;)
 
 ;--------------------------
 request_sessionid:
 ;--------------------------
-	; Calculate param size
+    ; Calculate param size
     +calc_payload_size sess_command
 
     ; Now run the command and get the reply
@@ -1233,8 +1254,8 @@ request_sessionid:
 +++ rts
 
 ;--------------------------
-
 sendURLPrefixToWic:
+;--------------------------
     +calc_payload_size cmd_default_server
 
     +wic64_execute cmd_default_server, response
@@ -1249,14 +1270,14 @@ sendURLPrefixToWic:
 +++ rts
 
 ;--------------------------
-
 sendSKTPCommand:
+;--------------------------
     +calc_payload_size sktp_command
     +wic64_execute sktp_command, response
     bcs +++
     bne +
 
-    ; Comand successful, init the response byte counter
+    ; Command successful, init the response byte counter
     lda #0
     sta next_resp_byte
     sta next_resp_byte+1
@@ -1270,7 +1291,7 @@ sendSKTPCommand:
 ;--------------------------
 read_byte:
 ;--------------------------
-	; We need to fetch the next_resp_byte'th byte of the response
+    ; We need to fetch the next_resp_byte'th byte of the response
     clc
     lda #<response          ; Low byte first
     adc next_resp_byte
@@ -1286,6 +1307,11 @@ read_byte:
     inc next_resp_byte+1
 
 +   rts
+
+
+;============================================
+; UTILITY ROUTINES
+;============================================
 
 ;--------------------------------------------
 ascii2screencode:
@@ -1315,19 +1341,24 @@ noconv:
 sktp_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; '!' means "url set with WIC64_SET_SERVER"
 sktp_key:               !text "!", "&r", 0
 
-cmd_default_server:     !byte "R", WIC64_SET_SERVER, $00, $00   ; <string-size-l>, <string-size-h>, <string>
+cmd_default_server:     !byte "R", WIC64_SET_SERVER, $00, $00       ; <string-size-l>, <string-size-h>, <string>
 cmd_default_url:        +sktp_server
 
                         !text "/sktp.php?s="
-cmd_default_url_sess:   !text "12345678901234567890123456"      ; This will be updated by request_sessionid
+cmd_default_url_sess:   !text "12345678901234567890123456"          ; This will be updated by request_sessionid
 cmd_default_url_parm:   !text "&k=", 0
 
 sess_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...
 sess_url:               +sktp_server
+!if PLUS4 {
+                        !text "/sktp.php?session=new&type=264&username=wic64test&f=wic&v="
+} else {
                         !text "/sktp.php?session=new&type=64&username=wic64test&f=wic&v="
+}
 sess_version:           +client_version
 sess_end:               !byte 0
 
+; Max response size is capped at the size of this buffer, of course
 response:               !fill 2048
 
 sktpChunk:
@@ -1336,41 +1367,56 @@ sktpChunkLengthL:       !text $00
 sktpChunkLengthH:       !text $00
 sktpChunkScrPosL:       !text $00
 sktpChunkScrPosH:       !text $00
-sktpChunkGap:       
+sktpChunkGap:
 sktpChunkColor:         !text $00
 sktpChunkRptCount:      !text $00
-        
+
 sktpScreenType:         !text $00
 sktpScreenLengthH:      !text $00
 sktpScreenLengthL:      !text $00
 sktpNettoChunkLengthL:  !text $00
 sktpNettoChunkLengthH:  !text $00
 
-errormsg_IllegalScreen: !pet  "Illegal Screen Type",0
-welcomeMsg:             !pet  "         SKTP client for WiC64",$0d,$0d,$0d
-                        !pet  "              Version "
+!macro WIC_NAME {
+!if PLUS4 {
+                        !pet "WiC+4"
+} else {
+                        !pet "WiC64"
+}
+}
+						;     1-------9-1-------9-1-------9-1-------9-
+errormsg_IllegalScreen: !pet "Illegal Screen Type", 0
+welcomeMsg:             !pet "         SKTP client for "
+						+WIC_NAME
+                        !pet $0d,$0d,$0d
+                        !pet "              Version "
                         +client_version
 
-                        !pet  $0d,"          Built on "
+                        !pet $0d,"          Built on "
                         +build_date
 
-                        !pet  $0d,$0d,"   2023-2024 by emulaThor & SukkoPera",$0d,$0d,$0d,$0d
-                        !pet  " Server: "
+                        !pet $0d,$0d,"   2023-2024 by emulaThor & SukkoPera", $0d, $0d
+                        !pet "     github.com/hpingel/sktp-client", $0d, $0d, $0d, $0d
+                        !pet " Server: "
                         +sktp_server
 
-                        !pet  $0d,$0d,$0d,$0d
-                        !pet  "        Requesting Session ID : ?",$0d
-                        !pet  $0d,$0d
-                        !pet  "             Press any key",0
+                        !pet $0d, $0d, $0d, 0
+requestSessIdMsg:       !pet "         Requesting Session ID: ?",$0d
+                        !pet $0d, $0d, 0
+
+pressAnyKeyMsg          !pet "             Press any key", 0
+wicNotDetectedMsg:      !pet "       No "
+                        +WIC_NAME
+                        !pet " card detected :(", 0
 
 nodoloMSG:              !pet $0d,$0d, "File launching...",$0d
-                        !pet "Please wait!",$0d,$0d,0
+                        !pet "Please wait!", $0d, $0d, 0
 
-dlurl_start:            !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...  
+dlurl_start:            !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...
 dlurl_netto_start:      !text "h", 0
                         !fill 254, 0
 
 ;---------------------------------
 
 program_end:
-	rts
+    rts
