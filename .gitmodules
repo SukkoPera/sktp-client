@@ -1,0 +1,3 @@
+[submodule "wic64-library"]
+	path = wic64-library
+	url = https://github.com/SukkoPera/wic64-library.git
