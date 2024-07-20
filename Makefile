@@ -1,6 +1,6 @@
-WIC64LIB = ../wic64-library
+WIC64LIB = ./wic64-library
 include $(WIC64LIB)/Makefile.inc
-INCLUDES = -I$(WIC64LIB) -I..
+INCLUDES = -I$(WIC64LIB)
 WIC64_SOURCES = $(WIC64LIB)/wic64.asm $(WIC64LIB)/wic64.h
 MYFLAGS = -f cbm -l $(@:prg=lst) -Dwic64_include_load_and_run=1
 

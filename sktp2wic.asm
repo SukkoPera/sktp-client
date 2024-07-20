@@ -1,7 +1,7 @@
 ﻿; SKTP (Sidekick64 transfer protocol) client
 ; for Commodore 64/+4 with WiC64
 ; Copyright (C) 2023 Henning Pingel
-; +4 by SukkoPera 2024
+; wic-library and +4 adaptation by SukkoPera 2024
 ;
 ; This program is free software: you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -41,9 +41,7 @@
 
 ; Clear the screen
 !macro clear_screen {
-    ;~ jsr $e544                ; C64
-    ;~ jsr $d88b                ; +4 (maybe)
-    lda #$93                    ; Universal
+    lda #$93                         ; This works on both C64 and +4
     jsr CHROUT
 }
 
@@ -113,6 +111,7 @@ COLOR_LIGHT_GREY = 15
 !macro sktp_server {
   !text "http://sktpdemo.cafeobskur.de"
   ;!text "http://localhost"
+  ;~ !text "http://192.168.2.1"
 }
 
 !macro build_date {
@@ -246,13 +245,31 @@ start:
     lda #14             ;switch to lowercase
     jsr CHROUT
 
+    ; Configure function keys so that they produce the same char codes as the C64
+!if PLUS4 {
+configure_fn_keys:
+    ldy #8
+-   lda #1              ; Length = 1
+    sta $055f-1,y
+    lda .fnchrs-1,y       ; Actual char
+    sta $0567-1,y
+    dey
+    beq .welcome
+    jmp -
+
+                ;      F1   F2   F3   F4   F5   F6   F7   HELP
+;~ .fnchrs:        !byte $85, $89, $86, $8A, $87, $8B, $8C, $88
+.fnchrs:        !byte $85, $86, $87, $89, $8a, $8b, $8c, $88
+}
+
     ; Show welcome message
+.welcome:
     +printStr welcomeMsg
 
     ; See if WicXX is there
-    jsr detectLegacyFirmware        ; FIXME: What if we detect legacy FW???
+    jsr detect_wic
     bcc renewSessionID
-    +printStr wicNotDetectedMsg     ; :(
+    +printStr wicNotDetectedMsg     ; No, it's not :(
     jmp program_end
 
 renewSessionID:
@@ -1190,13 +1207,15 @@ getLowNibbleHex:
 ;============================================
 
 ;--------------------------
-detectLegacyFirmware:
+detect_wic:
 ;--------------------------
     +wic64_detect
     ;~ bcs device_not_present       FIXME
     bcs +++
     bne +
 
+    +wic64_execute cmd_set_timeout, response
+    +wic64_set_timeout 30
     clc
     jmp +++
 
@@ -1337,6 +1356,8 @@ noconv:
 ;============================================
 ; DATA AREA
 ;============================================
+
+cmd_set_timeout:        !byte "R", WIC64_SET_TRANSFER_TIMEOUT, $01, $00, 30	; <seconds>
 
 sktp_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; '!' means "url set with WIC64_SET_SERVER"
 sktp_key:               !text "!", "&r", 0
