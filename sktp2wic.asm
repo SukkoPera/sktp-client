@@ -45,7 +45,7 @@
     jsr CHROUT
 }
 
-; Print a null-terminated string
+; Print a null-terminated string (Max length = 254)
 !macro printStr .msg {
     ldy #0
 -   lda .msg,y
@@ -107,20 +107,18 @@ COLOR_LIGHT_GREY = 15
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-!macro sktp_server {
-  !text "http://sktpdemo.cafeobskur.de"
-  ;!text "http://localhost"
-  ;~ !text "http://192.168.2.1"
+!if PLUS4 {
+    wic_name = "WiC+4"
+} else {
+    wic_name = "WiC64"
 }
 
-!macro build_date {
-  !text "2024-07-17"
-}
+;~ sktp_server = "http://sktpdemo.cafeobskur.de"
+sktp_server = "http://localhost"
+;~ sktp_server = "http://192.168.2.1"
 
-!macro client_version {
-  !text "0.24"
-}
+build_date = "2024-07-17"
+client_version = "0.24"
 
 ; BASIC launcher
 !if PLUS4 {
@@ -160,9 +158,9 @@ nextln:
 
 
 ;============================================
-; Program entry poin
+; Program entry point
 ;============================================
-jmp start
+    jmp start
 
 !src "wic64.h"
 !src "wic64.asm"
@@ -170,15 +168,11 @@ jmp start
 !if 0 {
 debugOutputScreenLength:
     ;prints out remaining screen byte length
-    ;lda sktpScreenLengthH
-    ;jsr PrintHiNibble
     lda sktpScreenLengthH
-    jsr PrintLowNibble
+    jsr printHex
     lda sktpScreenLengthL
-    jsr PrintHiNibble
-    lda sktpScreenLengthL
-    jsr PrintLowNibble
-    lda #","
+    jsr printHex
+    lda #','
     jsr CHROUT
     rts
 }
@@ -190,13 +184,12 @@ setBothColors:
 
 printDLURLStuff:
     ; Print "File launching...", etc
-    ldy #0
--   lda nodoloMSG,y
-    beq +
+    +printStr nodoloMSG
+
+!if DEBUG_DOWNLOAD=1 {
+    lda #$0d
     jsr CHROUT
-    iny
-    jmp -
-+   jsr CHROUT
+}
 
     ; We have the URL length handy, so let's just write it in the proper place for the command we'll call later
     lda sktpChunkType
@@ -204,32 +197,39 @@ printDLURLStuff:
 
     ; Print URL while copying it to dlurl_netto_start
     ldy #00
-printDLURLChar:
-    jsr read_byte
+-   jsr read_byte
     sta dlurl_netto_start,y
-;TODO ascii 2 petscii here
+!if DEBUG_DOWNLOAD=1 {
+    ;TODO ascii 2 petscii here
 ;    jsr ascii2screencode
-    iny
     jsr CHROUT
+}
+    iny
     dec sktpChunkType
-    bne printDLURLChar
+    bne -
 
+    ; Terminate
     lda #00
     sta dlurl_netto_start,y
 
+!if DEBUG_DOWNLOAD=1 {
+    ; 2 newlines
     lda #$0d
     jsr CHROUT
     lda #$0d
     jsr CHROUT
+}
 
-    ; Print download filename
-printDLFilenameChar:
-    jsr read_byte
-;TODO ascii 2 petscii here
+    ; Print download filename (Note it's not used in any other way)
+-   jsr read_byte
+!if DEBUG_DOWNLOAD=1 {
+    ;TODO ascii 2 petscii here
 ;    jsr ascii2screencode
     jsr CHROUT
+}
     dec sktpChunkLengthL
-    bne printDLFilenameChar
+    bne -
+    
     jmp requestDownloadURL          ; Will download and start
 
 
@@ -242,16 +242,16 @@ start:
     jsr setBothColors
     lda #5              ; white font color
     jsr CHROUT
-    lda #14             ;switch to lowercase
+    lda #14             ; switch to lowercase
     jsr CHROUT
 
     ; Configure function keys so that they produce the same char codes as the C64
-!if PLUS4 {
+!if PLUS4=1 {
 configure_fn_keys:
     ldy #8
 -   lda #1              ; Length = 1
     sta $055f-1,y
-    lda .fnchrs-1,y       ; Actual char
+    lda .fnchrs-1,y     ; Actual char
     sta $0567-1,y
     dey
     beq .welcome
@@ -365,7 +365,7 @@ jumpPositive:
     cmp #4
     bcs illegalScreenType
     cmp #3
-    beq renewSessionID_trampolin
+    beq renewSessionID_trampolin		; Too far for branching
     cmp #0
     bne parseChunk
     +clear_screen     ; Clr screen = disable on lengthdebug
@@ -380,22 +380,20 @@ illegalScreenType:
     lda #14
     jsr CHROUT
     ;ERR:
-    lda #"e"
+    lda #'e'
     jsr CHROUT
-    lda #"r"
+    lda #'r'
     jsr CHROUT
     jsr CHROUT
-    lda #":"
+    lda #':'
     jsr CHROUT
-    lda #" "
+    lda #' '
     jsr CHROUT
-    lda #"$"
+    lda #'$'
     jsr CHROUT
     lda sktpScreenType
-    jsr PrintHiNibble
-    lda sktpScreenType
-    jsr PrintLowNibble
-    lda #" "
+    jsr printHex
+    lda #' '
     jsr CHROUT
     ldy #0
 loopErrorMsg:
@@ -458,23 +456,19 @@ isnotempty:
     cmp #07
     bcc foundValidChunkType
 
-    lda #"%"
+    lda #'%'
     jsr CHROUT
     lda sktpChunkType
-    jsr PrintHiNibble
-    lda sktpChunkType
-    jsr PrintLowNibble
+    jsr printHex
 ;    ora #%00110000
 ;    jsr CHROUT
-    lda #"%"
+    lda #'%'
     jsr CHROUT
 
 ;    jsr read_byte
 ;    sta sktpChunkType;tmp debug
 ;    lda sktpChunkType
-;    jsr PrintHiNibble
-;    lda sktpChunkType
-;    jsr PrintLowNibble
+;    jsr printHex
 ;;    ora #%00110000
 ;;    jsr CHROUT
 ;    lda #"%"
@@ -483,9 +477,7 @@ isnotempty:
 ;    jsr read_byte
 ;    sta sktpChunkType;tmp debug
 ;    lda sktpChunkType
-;    jsr PrintHiNibble
-;    lda sktpChunkType
-;    jsr PrintLowNibble
+;    jsr printHex
 ;;    ora #%00110000
 ;;    jsr CHROUT
 ;    lda #"%"
@@ -930,41 +922,36 @@ endOfChunkReached:
     ;lda sktpNettoChunkLengthH
     ;beq nettoLowByte
 
-    ;;jsr PrintHiNibble ; this is not interesting, it should always be 0
-    ;lda sktpNettoChunkLengthH
-    ;LowNibble
-nettoLowByte:
+    ;jsr printHex
+;~ nettoLowByte:
 ;    lda sktpNettoChunkLengthL
-;    jsr PrintHiNibble
-;    lda sktpNettoChunkLengthL
-;    jsr PrintLowNibble
+;    jsr printHex
 ;    lda #")"
 ;    jsr CHROUT
 
     ;subtract length of complete chunk from screen
     lda sktpNettoChunkLengthH
-    cmp #00
-    beq gohere ;if high byte is zero don't change high byte of screenlength
+    beq .gohere ;if high byte is zero don't change high byte of screenlength
     lda sktpScreenLengthH
     clc
     sbc sktpNettoChunkLengthH
     sta sktpScreenLengthH
     inc sktpScreenLengthH ; workaround - test this line with petscii slideshow and arena/foyer
-    clc
+    ;~ clc
 ;    lda #"*"
 ;    jsr CHROUT
 
-gohere:
+.gohere:
     lda sktpScreenLengthL
     clc
     sbc sktpNettoChunkLengthL
-    bcs notundernull
+    bcs .notundernull
     tax
 ;    lda #"-"
 ;    jsr CHROUT
     txa
     dec sktpScreenLengthH
-notundernull:
+.notundernull:
     sta sktpScreenLengthL
 
     ;lengthdebug
@@ -1073,10 +1060,8 @@ prepareStuff: ; reads four bytes
     lsr
     sta sktpChunkLengthH
 
-;    jsr PrintHiNibble
-;    lda sktpChunkLengthH
-;    jsr PrintLowNibble
-;    lda #"/"
+;    jsr printHex
+;    lda #'/'
 
     jsr read_byte
     sta sktpChunkColor ;in case of paintbrush chunk this contains the gap value
@@ -1116,52 +1101,46 @@ showDebugInfo:
 
     lda #13
     jsr CHROUT
-    lda #"c"
+    lda #'c'
     jsr CHROUT
-    lda #"t"
+    lda #'t'
     jsr CHROUT
     lda sktpChunkType
     ora #%00110000
     jsr CHROUT
-    lda #"/"
+    lda #'/'
     jsr CHROUT
-    lda #"c"
+    lda #'c'
     jsr CHROUT
-    lda #"l"
+    lda #'l'
     jsr CHROUT
 
     lda sktpChunkLengthL
-    jsr PrintHiNibble
-    lda sktpChunkLengthL
-    jsr PrintLowNibble
-    lda #"/"
+    jsr printHex
+    lda #'/'
     jsr CHROUT
-    lda #"h"
+    lda #'h'
     jsr CHROUT
 
     lda sktpChunkScrPosH
-    jsr PrintHiNibble
-    lda sktpChunkScrPosH
-    jsr PrintLowNibble
-    lda #"/"
+    jsr printHex
+    lda #'/'
     jsr CHROUT
-    lda #"l"
+    lda #'l'
     jsr CHROUT
 
     lda sktpChunkScrPosL
-    jsr PrintHiNibble
-    lda sktpChunkScrPosL
-    jsr PrintLowNibble
-    lda #"/"
+    jsr printHex
+    lda #'/'
     jsr CHROUT
 
-    lda #"c"
+    lda #'c'
     jsr CHROUT
-    lda #"o"
+    lda #'o'
     jsr CHROUT
     lda sktpChunkColor
-    jsr PrintLowNibble
-    lda #"/"
+    jsr printHex
+    lda #'/'
     jsr CHROUT
 
     rts
@@ -1169,8 +1148,12 @@ showDebugInfo:
 
 ;--------------------------------
 
-PrintHiNibble:
+printHex:
+    pha
     jsr getHiNibbleHex
+    jsr CHROUT
+    pla
+    jsr getLowNibbleHex
     jsr CHROUT
     rts
 
@@ -1182,23 +1165,18 @@ getHiNibbleHex:
     lsr
     ora #%00110000
     cmp #58
-    bcc hiNibbleDone
+    bcc .hiNibbleDone
     adc #06
-:hiNibbleDone
-    rts
-
-PrintLowNibble:
-    jsr getLowNibbleHex
-    jsr CHROUT
+.hiNibbleDone
     rts
 
 getLowNibbleHex:
     and #%00001111
     ora #%00110000
     cmp #58
-    bcc lowNibbleDone
+    bcc .lowNibbleDone
     adc #06
-:lowNibbleDone
+.lowNibbleDone
     rts
 
 
@@ -1211,18 +1189,18 @@ detect_wic:
 ;--------------------------
     +wic64_detect
     ;~ bcs device_not_present       FIXME
-    bcs +++
+    bcs ++
     bne +
 
     +wic64_execute cmd_set_timeout, response
     +wic64_set_timeout 30
     clc
-    jmp +++
+    jmp ++
 
     ; Some error happened, report back through carry flag
 +   sec
 
-+++ rts
+++  rts
 
 ;--------------------------
 
@@ -1241,7 +1219,9 @@ detect_wic:
 requestDownloadURL:
 ;--------------------------
     ; We don't need to call +calc_payload_size dlurl_start, URL size was already updated before jumping here
-    +wic64_load_and_run dlurl_start
+    ;~ +wic64_execute cmd_set_timeout, response
+    ;~ +wic64_set_timeout 30
+    +wic64_load_and_run dlurl_start, 15
     rts                     ; I strongly doubt we'll ever get back here ;)
 
 ;--------------------------
@@ -1252,7 +1232,7 @@ request_sessionid:
 
     ; Now run the command and get the reply
     +wic64_execute sess_command, response
-    bcs +++
+    bcs ++
     bne +
 
     ; Copy session ID to its place - we only expect 26 bytes (<255, so hi byte is irrelevant)
@@ -1265,12 +1245,12 @@ request_sessionid:
     bne -
 
     clc
-    jmp +++
+    jmp ++
 
     ; Some error happened, report back through carry flag
 +   sec
 
-+++ rts
+++  rts
 
 ;--------------------------
 sendURLPrefixToWic:
@@ -1278,34 +1258,33 @@ sendURLPrefixToWic:
     +calc_payload_size cmd_default_server
 
     +wic64_execute cmd_default_server, response
-    bcs +++
+    bcs ++
     bne +
 
     clc
-    jmp +++
+    jmp ++
 
 +   sec
 
-+++ rts
+++  rts
 
 ;--------------------------
 sendSKTPCommand:
 ;--------------------------
     +calc_payload_size sktp_command
     +wic64_execute sktp_command, response
-    bcs +++
-    bne +
+    bcs ++
+    beq +
+    sec
+    jmp ++
 
     ; Command successful, init the response byte counter
-    lda #0
++   lda #0
     sta next_resp_byte
     sta next_resp_byte+1
     clc
-    jmp +++
 
-+   sec
-
-+++ rts
+++  rts
 
 ;--------------------------
 read_byte:
@@ -1363,20 +1342,20 @@ sktp_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; '!' means 
 sktp_key:               !text "!", "&r", 0
 
 cmd_default_server:     !byte "R", WIC64_SET_SERVER, $00, $00       ; <string-size-l>, <string-size-h>, <string>
-cmd_default_url:        +sktp_server
+cmd_default_url:        !text sktp_server
 
                         !text "/sktp.php?s="
 cmd_default_url_sess:   !text "12345678901234567890123456"          ; This will be updated by request_sessionid
 cmd_default_url_parm:   !text "&k=", 0
 
 sess_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...
-sess_url:               +sktp_server
+sess_url:               !text sktp_server
 !if PLUS4 {
                         !text "/sktp.php?session=new&type=264&username=wic64test&f=wic&v="
 } else {
                         !text "/sktp.php?session=new&type=64&username=wic64test&f=wic&v="
 }
-sess_version:           +client_version
+sess_version:           !text client_version
 sess_end:               !byte 0
 
 ; Max response size is capped at the size of this buffer, of course
@@ -1398,39 +1377,28 @@ sktpScreenLengthL:      !text $00
 sktpNettoChunkLengthL:  !text $00
 sktpNettoChunkLengthH:  !text $00
 
-!macro WIC_NAME {
-!if PLUS4 {
-                        !pet "WiC+4"
-} else {
-                        !pet "WiC64"
-}
-}
 						;     1-------9-1-------9-1-------9-1-------9-
 errormsg_IllegalScreen: !pet "Illegal Screen Type", 0
-welcomeMsg:             !pet "         SKTP client for "
-						+WIC_NAME
+welcomeMsg:             !pet "         SKTP client for ", wic_name
                         !pet $0d,$0d,$0d
-                        !pet "              Version "
-                        +client_version
+                        !pet "              Version ", client_version
 
-                        !pet $0d,"          Built on "
-                        +build_date
+                        !pet $0d,"          Built on ", build_date
 
                         !pet $0d,$0d,"   2023-2024 by emulaThor & SukkoPera", $0d, $0d
                         !pet "     github.com/hpingel/sktp-client", $0d, $0d, $0d, $0d
                         !pet " Server: "
-                        +sktp_server
+                        !pet sktp_server
 
                         !pet $0d, $0d, $0d, 0
 requestSessIdMsg:       !pet "         Requesting Session ID: ?",$0d
                         !pet $0d, $0d, 0
 
 pressAnyKeyMsg          !pet "             Press any key", 0
-wicNotDetectedMsg:      !pet "       No "
-                        +WIC_NAME
+wicNotDetectedMsg:      !pet "       No ", wic_name
                         !pet " card detected :(", 0
 
-nodoloMSG:              !pet $0d,$0d, "File launching...",$0d
+nodoloMSG:              !pet "File launching...", $0d
                         !pet "Please wait!", $0d, $0d, 0
 
 dlurl_start:            !byte "R", WIC64_HTTP_GET, $00, $00         ; <url-size-l>, <url-size-h>, <url>...
