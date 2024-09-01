@@ -113,12 +113,16 @@ COLOR_LIGHT_GREY = 15
     wic_name = "WiC64"
 }
 
-;~ sktp_server = "http://sktpdemo.cafeobskur.de"
-sktp_server = "http://localhost"
+sktp_server = "http://sktpdemo.cafeobskur.de"
+;~ sktp_server = "http://localhost"
 ;~ sktp_server = "http://192.168.2.1"
 
 build_date = "2024-07-17"
 client_version = "0.24"
+
+; Communication timeouts (seconds)
+REMOTE_TIMEOUT = 30
+TRANSFER_TIMEOUT = REMOTE_TIMEOUT
 
 ; BASIC launcher
 !if PLUS4 {
@@ -1192,8 +1196,8 @@ detect_wic:
     bcs ++
     bne +
 
-    +wic64_execute cmd_set_timeout, response
-    +wic64_set_timeout 30
+    +wic64_execute cmd_set_timeout
+    +wic64_set_timeout TRANSFER_TIMEOUT         ; Set default WiC <-> Computer interaction timeout
     clc
     jmp ++
 
@@ -1219,9 +1223,8 @@ detect_wic:
 requestDownloadURL:
 ;--------------------------
     ; We don't need to call +calc_payload_size dlurl_start, URL size was already updated before jumping here
-    ;~ +wic64_execute cmd_set_timeout, response
-    ;~ +wic64_set_timeout 30
-    +wic64_load_and_run dlurl_start, 15
+    +wic64_execute cmd_set_remote_timeout
+    +wic64_load_and_run dlurl_start, REMOTE_TIMEOUT
     rts                     ; I strongly doubt we'll ever get back here ;)
 
 ;--------------------------
@@ -1272,6 +1275,7 @@ sendURLPrefixToWic:
 sendSKTPCommand:
 ;--------------------------
     +calc_payload_size sktp_command
+    +wic64_execute cmd_set_remote_timeout
     +wic64_execute sktp_command, response
     bcs ++
     beq +
@@ -1336,7 +1340,25 @@ noconv:
 ; DATA AREA
 ;============================================
 
-cmd_set_timeout:        !byte "R", WIC64_SET_TRANSFER_TIMEOUT, $01, $00, 30	; <seconds>
+; This command sets the server-side transfer timeout to use for the next request, i.e. it sets the number of seconds the
+; WiC64 will wait for the C64 to continue a transfer before assuming that the transfer has timed out.
+; The server-side timeout value will be reset to the default value of one second after the request following this
+; request has been served, regardless of whether it was served successfully. This means that the server-side timeout
+; needs to be set before each request that requires a custom setting.
+; This is only required in case you are sending a request payload in discrete chunks and need more time on the C64 side
+; to prepare the next chunk of data, for example when reading the data from disk or generating it programatically.
+cmd_set_timeout:        !byte "R", WIC64_SET_TRANSFER_TIMEOUT, $01, $00, TRANSFER_TIMEOUT	; <seconds>
+
+; This command sets the server-side remote request timeout to use for the next request, i.e. it sets the number of
+; seconds the WiC64 will wait for a remote server to serve a request before assuming that the request has timed out.
+; The server-side request timeout value will be reset to the default value of five seconds after the request following
+; this request has been served, regardless of whether it was served successfully. This means that the server-side
+; timeout needs to be set before each request that requires a custom setting.
+; This is required if the remote server needs more time to serve the request, for example when generating the response
+; dynamically. Note that you will most likely also need to increase the client side timeout in this case, so that not
+; only the WiC64 is more patient with the remote server, but the C64 is more patient when waiting for the response from
+; the WiC64 as well.    
+cmd_set_remote_timeout: !byte "R", WIC64_SET_REMOTE_TIMEOUT, $01, $00, REMOTE_TIMEOUT	    ; <seconds>
 
 sktp_command:           !byte "R", WIC64_HTTP_GET, $00, $00         ; '!' means "url set with WIC64_SET_SERVER"
 sktp_key:               !text "!", "&r", 0
